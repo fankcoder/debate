@@ -15,6 +15,58 @@ const EXAMPLE_TOPICS = [
   '人工智能是否应该全面进入中小学课堂？',
 ]
 const EMPTY_SETTINGS = { apiBase: '', model: '', apiKey: '', apiMode: 'auto' }
+const MODEL_PRESETS = [
+  {
+    key: 'openai',
+    name: 'OpenAI',
+    apiBase: 'https://api.openai.com/v1',
+    apiMode: 'responses',
+    models: ['gpt-5.4', 'gpt-4.1', 'gpt-4o-mini'],
+  },
+  {
+    key: 'deepseek',
+    name: 'DeepSeek',
+    apiBase: 'https://api.deepseek.com',
+    apiMode: 'chat',
+    models: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'],
+  },
+  {
+    key: 'qwen',
+    name: '阿里云百炼 / 通义千问',
+    apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    apiMode: 'chat',
+    models: ['qwen-plus', 'qwen-turbo', 'qwen-max'],
+  },
+  {
+    key: 'siliconflow',
+    name: 'SiliconFlow',
+    apiBase: 'https://api.siliconflow.cn/v1',
+    apiMode: 'chat',
+    models: ['deepseek-ai/DeepSeek-V3.2', 'Qwen/Qwen3-8B', 'Qwen/Qwen3-32B'],
+  },
+  {
+    key: 'moonshot',
+    name: 'Moonshot / Kimi',
+    apiBase: 'https://api.moonshot.cn/v1',
+    apiMode: 'chat',
+    models: ['kimi-k2.5', 'moonshot-v1-8k', 'moonshot-v1-32k'],
+  },
+  {
+    key: 'zhipu',
+    name: '智谱 AI',
+    apiBase: 'https://open.bigmodel.cn/api/paas/v4',
+    apiMode: 'chat',
+    models: ['glm-4.5-air', 'glm-4-flash', 'glm-4-plus'],
+  },
+  {
+    key: 'openrouter',
+    name: 'OpenRouter',
+    apiBase: 'https://openrouter.ai/api/v1',
+    apiMode: 'chat',
+    models: ['deepseek/deepseek-chat', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini'],
+  },
+]
+const CUSTOM_PROVIDER_KEY = 'custom'
 const ROLE_META = {
   positive: { name: '正方', label: '主张成立', initial: '正', className: 'positive' },
   negative: { name: '反方', label: '主张不成立', initial: '反', className: 'negative' },
@@ -47,8 +99,34 @@ function Modal({ title, subtitle, icon, onClose, children }) {
 function LlmSettingsModal({ value, onSave, onClose }) {
   const [draft, setDraft] = useState(value)
   const [showKey, setShowKey] = useState(false)
+  const initialPreset = MODEL_PRESETS.find((preset) => preset.apiBase === value.apiBase && preset.models.includes(value.model))
+  const [providerKey, setProviderKey] = useState(initialPreset?.key || CUSTOM_PROVIDER_KEY)
+  const [modelPreset, setModelPreset] = useState(initialPreset?.models.includes(value.model) ? value.model : CUSTOM_PROVIDER_KEY)
   const complete = draft.apiBase.trim() && draft.model.trim() && draft.apiKey.trim()
   const update = (field, nextValue) => setDraft((current) => ({ ...current, [field]: nextValue }))
+
+  function selectProvider(nextProviderKey) {
+    setProviderKey(nextProviderKey)
+    const preset = MODEL_PRESETS.find((item) => item.key === nextProviderKey)
+    if (!preset) {
+      setModelPreset(CUSTOM_PROVIDER_KEY)
+      setDraft((current) => ({ ...current, apiBase: '', model: '', apiMode: 'auto' }))
+      return
+    }
+    const nextModel = preset.models[0]
+    setModelPreset(nextModel)
+    setDraft((current) => ({ ...current, apiBase: preset.apiBase, model: nextModel, apiMode: preset.apiMode }))
+  }
+
+  function selectModel(nextModel) {
+    setModelPreset(nextModel)
+    const preset = MODEL_PRESETS.find((item) => item.key === providerKey)
+    if (nextModel === CUSTOM_PROVIDER_KEY) {
+      update('model', '')
+    } else if (preset) {
+      update('model', nextModel)
+    }
+  }
 
   return (
     <Modal title="连接模型" subtitle="页面会从浏览器直接调用你的 OpenAI 兼容接口。" icon={<KeyRound size={20} />} onClose={onClose}>
@@ -56,8 +134,21 @@ function LlmSettingsModal({ value, onSave, onClose }) {
         <ShieldCheck size={17} />
         <span>API Key 仅保存在当前浏览器会话缓存中，关闭标签后清除，本项目不会将其上传到自有服务器，可降低泄漏风险。<br />代码开源地址：<a href="https://github.com/fankcoder/debate" target="_blank" rel="noreferrer">https://github.com/fankcoder/debate</a></span>
       </div>
-      <label className="field-label">API 地址<input value={draft.apiBase} onChange={(event) => update('apiBase', event.target.value)} placeholder="https://api.openai.com/v1" /></label>
-      <label className="field-label">模型名称<input value={draft.model} onChange={(event) => update('model', event.target.value)} placeholder="gpt-4o-mini" /></label>
+      <label className="field-label">服务商
+        <select value={providerKey} onChange={(event) => selectProvider(event.target.value)}>
+          {MODEL_PRESETS.map((preset) => <option key={preset.key} value={preset.key}>{preset.name}</option>)}
+          <option value={CUSTOM_PROVIDER_KEY}>自定义服务商</option>
+        </select>
+      </label>
+      {providerKey === CUSTOM_PROVIDER_KEY && <label className="field-label">API 地址<input value={draft.apiBase} onChange={(event) => update('apiBase', event.target.value)} placeholder="https://api.example.com/v1" /></label>}
+      {providerKey !== CUSTOM_PROVIDER_KEY && <div className="preset-endpoint">API 地址：{draft.apiBase}</div>}
+      <label className="field-label">模型名称
+        <select value={modelPreset} onChange={(event) => selectModel(event.target.value)}>
+          {(MODEL_PRESETS.find((preset) => preset.key === providerKey)?.models || []).map((model) => <option key={model} value={model}>{model}</option>)}
+          <option value={CUSTOM_PROVIDER_KEY}>自定义模型</option>
+        </select>
+        {modelPreset === CUSTOM_PROVIDER_KEY && <input className="standalone-input" value={draft.model} onChange={(event) => update('model', event.target.value)} placeholder="填写模型名称" />}
+      </label>
       <label className="field-label">API Key
         <div className="password-field">
           <input type={showKey ? 'text' : 'password'} value={draft.apiKey} onChange={(event) => update('apiKey', event.target.value)} placeholder="sk-..." autoComplete="off" />
